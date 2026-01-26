@@ -19,7 +19,7 @@
 
 ## 🚀 Send this to Jeffrey (PowerShell One-Liner)
 
-Paste this into an elevated PowerShell window:
+Paste this into PowerShell:
 
 <div class="position-relative">
   <pre><code>irm https://raw.githubusercontent.com/SysAdminDoc/ThankYouJeffrey/refs/heads/main/ThankYouJeffrey.ps1 | iex
