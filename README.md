@@ -17,6 +17,15 @@
 
 ---
 
+## 🚀 Send this to Jeffrey (PowerShell One-Liner)
+
+Paste this into an elevated PowerShell window:
+
+<div class="position-relative">
+  <pre><code>irm https://raw.githubusercontent.com/SysAdminDoc/ThankYouJeffrey/refs/heads/main/ThankYouJeffrey.ps1 | iex
+</code></pre>
+</div>
+
 ## About
 
 This is a cinematic console experience celebrating **Jeffrey Snover's** retirement - the visionary who created PowerShell and fundamentally changed how we manage systems.
