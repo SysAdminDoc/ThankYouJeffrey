@@ -71,19 +71,7 @@ For 20+ years of innovation.
 
 ---
 
-## Contributing
-
-Feel free to fork this repository and add your own touches! Whether it's additional animations, more historical moments, or translated versions - all contributions celebrating Jeffrey's legacy are welcome.
-
----
-
 ```powershell
 PS C:\> Write-Host "Goodbye, and thank you!" -ForegroundColor Cyan
 Goodbye, and thank you!
 ```
-
----
-
-**#ThankYouJeffrey #PowerShell**
-
-*From the PowerShell community, with love.*
