@@ -1,5 +1,7 @@
 # Thank You Jeffrey
 
+![License](https://img.shields.io/badge/license-MIT-green) ![Platform](https://img.shields.io/badge/platform-PowerShell-lightgrey)
+
 ### A PowerShell Tribute to Jeffrey Snover
 
 ---
