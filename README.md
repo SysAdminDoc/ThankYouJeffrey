@@ -28,6 +28,15 @@ Paste this into PowerShell:
 </code></pre>
 </div>
 
+For a faster run, use `-Speed Fast`; `-Audio` enables the optional console
+sound cues; `-Locale ja`, `-Locale de`, or `-Locale pt-br` selects a translated
+tribute; and `-Online` refreshes the community wall from the public submissions
+bundle. Press Space during playback to jump to the finale, or R to replay it.
+
+When running from a checkout, the timeline, Snoverisms, community tributes, and
+translations are stored in the `data/` JSON bundles. The one-line invocation
+uses embedded fallbacks when those files are not present.
+
 ## About
 
 This is a cinematic console experience celebrating **Jeffrey Snover's** retirement - the visionary who created PowerShell and fundamentally changed how we manage systems.

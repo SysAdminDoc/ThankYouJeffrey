@@ -1,0 +1,62 @@
+[
+  {
+    "year": "2002",
+    "event": "The Monad Manifesto is written",
+    "color": "Cyan",
+    "source": "Monad Manifesto"
+  },
+  {
+    "year": "2003",
+    "event": "Project Monad begins at Microsoft",
+    "color": "Cyan",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2006",
+    "event": "PowerShell 1.0 released to the world",
+    "color": "Green",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2009",
+    "event": "PowerShell 2.0 - Remoting & Modules",
+    "color": "White",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2012",
+    "event": "PowerShell 3.0 - Workflows arrive",
+    "color": "White",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2016",
+    "event": "PowerShell goes OPEN SOURCE",
+    "color": "Yellow",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2016",
+    "event": "PowerShell runs on Linux & macOS",
+    "color": "Magenta",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2018",
+    "event": "PowerShell Core 6.0 - Cross-platform",
+    "color": "Cyan",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2020",
+    "event": "PowerShell 7 - The unified shell",
+    "color": "Green",
+    "source": "PowerShell history"
+  },
+  {
+    "year": "2025",
+    "event": "Jeffrey Snover retires",
+    "color": "Yellow",
+    "source": "Community tribute"
+  }
+]

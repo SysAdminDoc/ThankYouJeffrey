@@ -22,7 +22,11 @@ param(
     [switch]$Audio,
     [switch]$SkipIntro,
     [switch]$EasterEgg,
-    [switch]$NoWait
+    [switch]$NoWait,
+    [ValidateSet('Auto', 'en', 'ja', 'de', 'pt-br')]
+    [string]$Locale = 'Auto',
+    [switch]$Online,
+    [string]$CommunityUri = 'https://raw.githubusercontent.com/SysAdminDoc/ThankYouJeffrey/main/data/tributes.json'
 )
 
 #Requires -Version 5.1
@@ -49,6 +53,9 @@ $script:Config = [ordered]@{
     ReplayRequested = $false
     SuppressDelays  = $NoWait.IsPresent
     EasterEgg       = $EasterEgg.IsPresent
+    Locale          = $Locale
+    Online          = $Online.IsPresent
+    CommunityUri    = $CommunityUri
 }
 
 switch ($Speed) {
@@ -200,6 +207,306 @@ function Wait-Animation {
         Start-Sleep -Milliseconds $slice
         $remaining -= $slice
     }
+}
+
+$script:DataRoot = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    Join-Path $PSScriptRoot 'data'
+} else {
+    Join-Path (Get-Location) 'data'
+}
+
+function Read-JsonBundle {
+    param(
+        [string]$FileName,
+        [object]$Fallback
+    )
+
+    $path = Join-Path $script:DataRoot $FileName
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        try {
+            $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8
+            if (-not [string]::IsNullOrWhiteSpace($json)) {
+                return ConvertFrom-Json -InputObject $json
+            }
+        } catch {
+            # A malformed local bundle falls back to the embedded safe copy.
+        }
+    }
+
+    return $Fallback
+}
+
+function Get-DefaultTimeline {
+    return @(
+        [pscustomobject]@{ Year = '2002'; Event = 'The Monad Manifesto is written'; Color = 'Cyan'; Source = 'Monad Manifesto' },
+        [pscustomobject]@{ Year = '2003'; Event = 'Project Monad begins at Microsoft'; Color = 'Cyan'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2006'; Event = 'PowerShell 1.0 released to the world'; Color = 'Green'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2009'; Event = 'PowerShell 2.0 - Remoting & Modules'; Color = 'White'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2012'; Event = 'PowerShell 3.0 - Workflows arrive'; Color = 'White'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2016'; Event = 'PowerShell goes OPEN SOURCE'; Color = 'Yellow'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2016'; Event = 'PowerShell runs on Linux & macOS'; Color = 'Magenta'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2018'; Event = 'PowerShell Core 6.0 - Cross-platform'; Color = 'Cyan'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2020'; Event = 'PowerShell 7 - The unified shell'; Color = 'Green'; Source = 'PowerShell history' },
+        [pscustomobject]@{ Year = '2025'; Event = 'Jeffrey Snover retires'; Color = 'Yellow'; Source = 'Community tribute' }
+    )
+}
+
+function Get-DefaultSnoverisms {
+    return @(
+        [pscustomobject]@{ Text = 'The pipeline is the heart of PowerShell.'; Attr = '- Jeffrey Snover'; Source = 'PowerShell community' },
+        [pscustomobject]@{ Text = 'PowerShell is a tool for thought.'; Attr = '- Jeffrey Snover'; Source = 'PowerShell community' },
+        [pscustomobject]@{ Text = 'Live your life in a state of compounding success.'; Attr = '- Jeffrey Snover'; Source = 'Snoverism' },
+        [pscustomobject]@{ Text = 'Automate everything. Then automate the automation.'; Attr = '- The PowerShell Way'; Source = 'Community paraphrase' }
+    )
+}
+
+function Get-DefaultTributes {
+    return @(
+        [pscustomobject]@{ Author = 'PowerShell community'; Message = 'Thank you for a shell that thinks in objects.'; Source = 'Project seed tribute' },
+        [pscustomobject]@{ Author = 'Every scripter'; Message = 'Your ideas turned repetitive work into joyful automation.'; Source = 'Project seed tribute' },
+        [pscustomobject]@{ Author = 'ThankYouJeffrey'; Message = 'The pipeline keeps carrying the legacy forward.'; Source = 'Project seed tribute' }
+    )
+}
+
+function Get-DefaultLocales {
+    $english = [pscustomobject]@{
+        Production = 'A PowerShell Production'
+        Presents = 'presents'
+        Creator = 'Creator of PowerShell'
+        RetirementTribute = '[ A Retirement Tribute ]'
+        ProblemYear = '~~ 2002 ~~'
+        ManifestoDate = '~~ August 2002 ~~'
+        ManifestoTitle = 'THE MONAD MANIFESTO'
+        Journey = 'THE JOURNEY'
+        Impact = 'THE IMPACT'
+        Quotes = 'S N O V E R I S M S'
+        CommunityWall = 'COMMUNITY TRIBUTE WALL'
+        HappyRetirement = 'HAPPY RETIREMENT'
+        ThankYou = 'Thank you, Jeffrey.'
+        EnjoyRetirement = 'Enjoy your well-deserved retirement!'
+        CommunityWithLove = 'From the PowerShell community, with love.'
+        PressAnyKey = 'Press any key to exit, or R to replay...'
+        Goodbye = 'Goodbye, and thank you!'
+        StatScripts = 'Millions of scripts written'
+        StatHours = 'Countless hours saved'
+        StatSystems = 'Systems automated worldwide'
+        StatCommunity = 'A community united'
+        CreditsOne = 'This tribute was created entirely in PowerShell'
+        CreditsTwo = 'Because there is no better way to say thank you'
+        CreditsThree = 'than with the very tool you created.'
+        EasterEggTitle = 'THE PIPELINE KNOWS'
+        EasterEggLine = 'Get-Process | Where-Object Legacy -eq Legacy | Thank-You'
+    }
+
+    $japanese = [pscustomobject]@{
+        Production = 'PowerShell プロダクション'
+        Presents = 'お届けします'
+        Creator = 'PowerShell の創造者'
+        RetirementTribute = '[ 引退記念トリビュート ]'
+        ProblemYear = '~~ 2002年 ~~'
+        ManifestoDate = '~~ 2002年8月 ~~'
+        ManifestoTitle = 'モナド・マニフェスト'
+        Journey = '歩み'
+        Impact = '影響'
+        Quotes = 'スノーバーイズム'
+        CommunityWall = 'コミュニティからのメッセージ'
+        HappyRetirement = 'ご退職おめでとうございます'
+        ThankYou = 'ありがとう、ジェフリー。'
+        EnjoyRetirement = '素晴らしい引退生活を！'
+        CommunityWithLove = 'PowerShell コミュニティより、感謝をこめて。'
+        PressAnyKey = '任意のキーで終了、R で再生...'
+        Goodbye = 'さようなら、そしてありがとう！'
+        StatScripts = '数えきれないスクリプト'
+        StatHours = '節約された無数の時間'
+        StatSystems = '世界中のシステムを自動化'
+        StatCommunity = 'ひとつになったコミュニティ'
+        CreditsOne = 'このトリビュートは PowerShell だけで作られました'
+        CreditsTwo = 'あなたが作ったツールで感謝を伝える以上の方法はありません'
+        CreditsThree = 'あなたが作った、そのツールで。'
+        EasterEggTitle = 'パイプラインは知っている'
+        EasterEggLine = 'Get-Process | Where-Object Legacy -eq Legacy | Thank-You'
+    }
+
+    $german = [pscustomobject]@{
+        Production = 'Eine PowerShell-Produktion'
+        Presents = 'präsentiert'
+        Creator = 'Schöpfer von PowerShell'
+        RetirementTribute = '[ Eine Hommage zum Ruhestand ]'
+        ProblemYear = '~~ 2002 ~~'
+        ManifestoDate = '~~ August 2002 ~~'
+        ManifestoTitle = 'DAS MONAD-MANIFEST'
+        Journey = 'DIE REISE'
+        Impact = 'DIE WIRKUNG'
+        Quotes = 'S N O V E R I S M E N'
+        CommunityWall = 'TRIBUTWAND DER COMMUNITY'
+        HappyRetirement = 'EINEN SCHÖNEN RUHESTAND'
+        ThankYou = 'Danke, Jeffrey.'
+        EnjoyRetirement = 'Genieße deinen wohlverdienten Ruhestand!'
+        CommunityWithLove = 'Von der PowerShell-Community, mit Liebe.'
+        PressAnyKey = 'Beliebige Taste zum Beenden, R zum Wiederholen...'
+        Goodbye = 'Auf Wiedersehen und vielen Dank!'
+        StatScripts = 'Millionen geschriebene Skripte'
+        StatHours = 'Unzählige gesparte Stunden'
+        StatSystems = 'Systeme weltweit automatisiert'
+        StatCommunity = 'Eine geeinte Community'
+        CreditsOne = 'Diese Hommage wurde vollständig in PowerShell erstellt'
+        CreditsTwo = 'Denn es gibt keinen besseren Weg, Danke zu sagen'
+        CreditsThree = 'als mit dem Werkzeug, das du geschaffen hast.'
+        EasterEggTitle = 'DIE PIPELINE WEISS ES'
+        EasterEggLine = 'Get-Process | Where-Object Legacy -eq Legacy | Thank-You'
+    }
+
+    $portuguese = [pscustomobject]@{
+        Production = 'Uma produção PowerShell'
+        Presents = 'apresenta'
+        Creator = 'Criador do PowerShell'
+        RetirementTribute = '[ Uma homenagem à aposentadoria ]'
+        ProblemYear = '~~ 2002 ~~'
+        ManifestoDate = '~~ Agosto de 2002 ~~'
+        ManifestoTitle = 'O MANIFESTO MONAD'
+        Journey = 'A JORNADA'
+        Impact = 'O IMPACTO'
+        Quotes = 'S N O V E R I S M O S'
+        CommunityWall = 'MURAL DE HOMENAGENS DA COMUNIDADE'
+        HappyRetirement = 'FELIZ APOSENTADORIA'
+        ThankYou = 'Obrigado, Jeffrey.'
+        EnjoyRetirement = 'Aproveite sua merecida aposentadoria!'
+        CommunityWithLove = 'Da comunidade PowerShell, com carinho.'
+        PressAnyKey = 'Pressione uma tecla para sair, ou R para repetir...'
+        Goodbye = 'Adeus e muito obrigado!'
+        StatScripts = 'Milhões de scripts escritos'
+        StatHours = 'Incontáveis horas economizadas'
+        StatSystems = 'Sistemas automatizados no mundo todo'
+        StatCommunity = 'Uma comunidade unida'
+        CreditsOne = 'Esta homenagem foi criada inteiramente em PowerShell'
+        CreditsTwo = 'Porque não há maneira melhor de agradecer'
+        CreditsThree = 'do que com a própria ferramenta que você criou.'
+        EasterEggTitle = 'O PIPELINE SABE'
+        EasterEggLine = 'Get-Process | Where-Object Legacy -eq Legacy | Thank-You'
+    }
+
+    return [pscustomobject]@{ en = $english; ja = $japanese; de = $german; 'pt-br' = $portuguese }
+}
+
+function Resolve-Locale {
+    $requested = [string]$script:Config.Locale
+    if ($requested -ne 'Auto') {
+        return $requested.ToLowerInvariant()
+    }
+
+    $culture = [string][System.Globalization.CultureInfo]::CurrentUICulture.Name
+    if ($culture -like 'ja*') { return 'ja' }
+    if ($culture -like 'de*') { return 'de' }
+    if ($culture -like 'pt-BR' -or $culture -like 'pt-br') { return 'pt-br' }
+    return 'en'
+}
+
+function Initialize-Content {
+    if ($null -ne $script:Content) {
+        return
+    }
+
+    $script:Content = @{
+        Timeline = Read-JsonBundle -FileName 'timeline.json' -Fallback (Get-DefaultTimeline)
+        Snoverisms = Read-JsonBundle -FileName 'snoverisms.json' -Fallback (Get-DefaultSnoverisms)
+        Tributes = Read-JsonBundle -FileName 'tributes.json' -Fallback (Get-DefaultTributes)
+        Locales = Read-JsonBundle -FileName 'locales.json' -Fallback (Get-DefaultLocales)
+    }
+    $script:Config.Locale = Resolve-Locale
+}
+
+function Get-PropertyValue {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -ne $property) {
+        return $property.Value
+    }
+
+    return $null
+}
+
+function Get-LocalizedString {
+    param([string]$Key)
+
+    Initialize-Content
+    $localeTable = Get-PropertyValue -Object $script:Content.Locales -Name $script:Config.Locale
+    $value = Get-PropertyValue -Object $localeTable -Name $Key
+    if ($null -eq $value) {
+        $value = Get-PropertyValue -Object (Get-PropertyValue -Object $script:Content.Locales -Name 'en') -Name $Key
+    }
+    if ($null -eq $value) {
+        return $Key
+    }
+    return [string]$value
+}
+
+function Get-Timeline {
+    Initialize-Content
+    $value = $script:Content.Timeline
+    if ($null -ne (Get-PropertyValue -Object $value -Name 'milestones')) {
+        return @($value.milestones)
+    }
+    return @($value)
+}
+
+function Get-Snoverisms {
+    Initialize-Content
+    $value = $script:Content.Snoverisms
+    if ($null -ne (Get-PropertyValue -Object $value -Name 'quotes')) {
+        $value = $value.quotes
+    }
+
+    return @($value | ForEach-Object {
+        [pscustomobject]@{
+            Text = [string](Get-PropertyValue -Object $_ -Name 'text')
+            Attr = [string](Get-PropertyValue -Object $_ -Name 'attribution')
+            Source = [string](Get-PropertyValue -Object $_ -Name 'source')
+        }
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Text) })
+}
+
+function ConvertTo-SafeTributes {
+    param([object]$Value)
+
+    if ($null -ne (Get-PropertyValue -Object $Value -Name 'tributes')) {
+        $Value = $Value.tributes
+    }
+
+    return @($Value | ForEach-Object {
+        $author = [string](Get-PropertyValue -Object $_ -Name 'author')
+        $message = [string](Get-PropertyValue -Object $_ -Name 'message')
+        $source = [string](Get-PropertyValue -Object $_ -Name 'source')
+        if ($author.Length -gt 40) { $author = $author.Substring(0, 40) }
+        if ($message.Length -gt 180) { $message = $message.Substring(0, 177) + '...' }
+        if (-not [string]::IsNullOrWhiteSpace($author) -and -not [string]::IsNullOrWhiteSpace($message)) {
+            [pscustomobject]@{ Author = $author.Trim(); Message = $message.Trim(); Source = $source.Trim() }
+        }
+    } | Select-Object -First 8)
+}
+
+function Get-CommunityTributes {
+    Initialize-Content
+    if ($script:Config.Online -and -not [string]::IsNullOrWhiteSpace($script:Config.CommunityUri)) {
+        try {
+            $remote = Invoke-RestMethod -Uri $script:Config.CommunityUri -Method Get -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+            $safeRemote = ConvertTo-SafeTributes -Value $remote
+            if (@($safeRemote).Count -gt 0) {
+                return $safeRemote
+            }
+        } catch {
+            # Network failures never interrupt the local tribute experience.
+        }
+    }
+
+    return ConvertTo-SafeTributes -Value $script:Content.Tributes
 }
 
 # ============================================================================
@@ -543,6 +850,7 @@ function Write-ConsoleText {
 
 function Initialize-Console {
     Initialize-Pacing
+    Initialize-Content
     $script:OriginalBg = $null
     $script:OriginalFg = $null
     $script:OriginalCursor = $true
@@ -799,7 +1107,7 @@ function Show-Opening {
     
     # Fade in "A PowerShell Production"
     Wait-Animation -Milliseconds 500
-    Write-TypewriterCentered -Text "A PowerShell Production" -Y $centerY -Color 'DarkGray' -Delay 50 -WithSound
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'Production') -Y $centerY -Color 'DarkGray' -Delay 50 -WithSound
     Play-TypewriterReturn
     Wait-Animation -Milliseconds 1500
     
@@ -808,7 +1116,7 @@ function Show-Opening {
     Wait-Animation -Milliseconds 300
     
     # Fade in "Presents"
-    Write-TypewriterCentered -Text "presents" -Y $centerY -Color 'DarkGray' -Delay 80 -WithSound
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'Presents') -Y $centerY -Color 'DarkGray' -Delay 80 -WithSound
     Play-Sparkle
     Wait-Animation -Milliseconds 1500
     
@@ -840,10 +1148,10 @@ function Show-Title {
     Play-Sparkle
     
     Wait-Animation -Milliseconds 300
-    Write-TypewriterCentered -Text "Creator of PowerShell" -Y ($subtitleY + 2) -Color 'White' -Delay 40
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'Creator') -Y ($subtitleY + 2) -Color 'White' -Delay 40
     
     Wait-Animation -Milliseconds 300
-    Write-TypewriterCentered -Text "[ A Retirement Tribute ]" -Y ($subtitleY + 4) -Color 'DarkGray' -Delay 30
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'RetirementTribute') -Y ($subtitleY + 4) -Color 'DarkGray' -Delay 30
     
     Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
@@ -859,7 +1167,7 @@ function Show-TheProblem {
     
     # Year header
     Play-TransitionUp
-    Write-Centered -Text "~~ 2002 ~~" -Y $y -Color 'Magenta'
+    Write-Centered -Text (Get-LocalizedString -Key 'ProblemYear') -Y $y -Color 'Magenta'
     $y += 3
     
     # Scene setting
@@ -907,7 +1215,7 @@ function Show-TheManifesto {
     $y = 3
     
     Play-Whoosh
-    Write-Centered -Text "~~ August 2002 ~~" -Y $y -Color 'Magenta'
+    Write-Centered -Text (Get-LocalizedString -Key 'ManifestoDate') -Y $y -Color 'Magenta'
     $y += 3
     
     Write-TypewriterCentered -Text "Jeffrey Snover writes..." -Y $y -Color 'DarkGray' -Delay 40 -WithSound
@@ -919,7 +1227,7 @@ function Show-TheManifesto {
     Play-Sparkle
     $y += $monadLines.Count + 2
     
-    Write-TypewriterCentered -Text "THE MONAD MANIFESTO" -Y $y -Color 'Yellow' -Delay 60 -WithSound
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'ManifestoTitle') -Y $y -Color 'Yellow' -Delay 60 -WithSound
     Play-VictoryTheme
     $y += 3
     
@@ -949,21 +1257,10 @@ function Show-Timeline {
     $y = 2
     
     Play-TransitionUp
-    Write-Centered -Text "THE JOURNEY" -Y $y -Color 'Yellow'
+    Write-Centered -Text (Get-LocalizedString -Key 'Journey') -Y $y -Color 'Yellow'
     $y += 3
     
-    $timeline = @(
-        @{ Year = "2002"; Event = "The Monad Manifesto is written"; Color = 'Cyan' },
-        @{ Year = "2003"; Event = "Project Monad begins at Microsoft"; Color = 'Cyan' },
-        @{ Year = "2006"; Event = "PowerShell 1.0 released to the world"; Color = 'Green' },
-        @{ Year = "2009"; Event = "PowerShell 2.0 - Remoting & Modules"; Color = 'White' },
-        @{ Year = "2012"; Event = "PowerShell 3.0 - Workflows arrive"; Color = 'White' },
-        @{ Year = "2016"; Event = "PowerShell goes OPEN SOURCE"; Color = 'Yellow' },
-        @{ Year = "2016"; Event = "PowerShell runs on Linux & macOS"; Color = 'Magenta' },
-        @{ Year = "2018"; Event = "PowerShell Core 6.0 - Cross-platform"; Color = 'Cyan' },
-        @{ Year = "2020"; Event = "PowerShell 7 - The unified shell"; Color = 'Green' },
-        @{ Year = "2025"; Event = "Jeffrey Snover retires"; Color = 'Yellow' }
-    )
+    $timeline = Get-Timeline
     
     foreach ($item in $timeline) {
         $yearText = "[ $($item.Year) ]"
@@ -1018,7 +1315,7 @@ function Show-Impact {
     $y = 3
     
     Play-Whoosh
-    Write-Centered -Text "THE IMPACT" -Y $y -Color 'Yellow'
+    Write-Centered -Text (Get-LocalizedString -Key 'Impact') -Y $y -Color 'Yellow'
     $y += 4
     
     # PowerShell logo
@@ -1028,10 +1325,10 @@ function Show-Impact {
     $y += $logoLines.Count + 2
     
     $stats = @(
-        "Millions of scripts written",
-        "Countless hours saved",
-        "Systems automated worldwide",
-        "A community united"
+        (Get-LocalizedString -Key 'StatScripts'),
+        (Get-LocalizedString -Key 'StatHours'),
+        (Get-LocalizedString -Key 'StatSystems'),
+        (Get-LocalizedString -Key 'StatCommunity')
     )
     
     foreach ($stat in $stats) {
@@ -1055,21 +1352,9 @@ function Show-Impact {
 function Show-Quotes {
     Clear-Console
     $height = $script:Config.ConsoleHeight
-    
-    $quotes = @(
-        @{
-            Text = "The pipeline is the heart of PowerShell."
-            Attr = "- Jeffrey Snover"
-        },
-        @{
-            Text = "PowerShell is a tool for thought."
-            Attr = "- Jeffrey Snover"
-        },
-        @{
-            Text = "Automate everything. Then automate the automation."
-            Attr = "- The PowerShell Way"
-        }
-    )
+
+    $quotes = Get-Snoverisms
+    Write-Centered -Text (Get-LocalizedString -Key 'Quotes') -Y 2 -Color 'Yellow'
     
     foreach ($quote in $quotes) {
         Play-TransitionUp
@@ -1083,6 +1368,33 @@ function Show-Quotes {
         
         Wait-Animation -Milliseconds 2000
     }
+}
+
+function Show-CommunityWall {
+    $tributes = @(Get-CommunityTributes)
+    if ($tributes.Count -eq 0) {
+        return
+    }
+
+    Clear-Console
+    Write-Centered -Text (Get-LocalizedString -Key 'CommunityWall') -Y 2 -Color 'Yellow'
+    $y = 5
+    foreach ($tribute in $tributes) {
+        if ($y -ge ($script:Config.ConsoleHeight - 3) -or $script:Config.SkipToEnd) {
+            break
+        }
+
+        $line = "[$($tribute.Author)] $($tribute.Message)"
+        $maxLength = [Math]::Max(20, $script:Config.ConsoleWidth - 8)
+        if ($line.Length -gt $maxLength) {
+            $line = $line.Substring(0, $maxLength - 3) + '...'
+        }
+        Write-TypewriterCentered -Text $line -Y $y -Color 'White' -Delay 15
+        $y += 2
+        Wait-Animation -Milliseconds 250
+    }
+
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
 
 # ============================================================================
@@ -1175,7 +1487,7 @@ function Show-Finale {
     
     # First, show the message
     Play-VictoryTheme
-    Write-Centered -Text "HAPPY RETIREMENT" -Y ($centerY - 5) -Color 'Yellow'
+    Write-Centered -Text (Get-LocalizedString -Key 'HappyRetirement') -Y ($centerY - 5) -Color 'Yellow'
     
     $nameLines = $script:Art.JeffreyName -split "`n"
     $nameY = $centerY - 3
@@ -1196,7 +1508,7 @@ function Show-Finale {
     
     $finalY = [Math]::Floor($height / 2) - 6
     
-    Write-Centered -Text "Thank you, Jeffrey." -Y $finalY -Color 'Yellow'
+    Write-Centered -Text (Get-LocalizedString -Key 'ThankYou') -Y $finalY -Color 'Yellow'
     $finalY += 3
     
     $messages = @(
@@ -1216,12 +1528,12 @@ function Show-Finale {
     
     $finalY += 2
     Play-Sparkle
-    Write-Centered -Text "Enjoy your well-deserved retirement!" -Y $finalY -Color 'Green'
+    Write-Centered -Text (Get-LocalizedString -Key 'EnjoyRetirement') -Y $finalY -Color 'Green'
     
     $finalY += 3
     Write-Centered -Text "---" -Y $finalY -Color 'DarkGray'
     $finalY += 2
-    Write-Centered -Text "From the PowerShell community, with love." -Y $finalY -Color 'Cyan'
+    Write-Centered -Text (Get-LocalizedString -Key 'CommunityWithLove') -Y $finalY -Color 'Cyan'
     
     # Final prompt
     $finalY += 4
@@ -1247,11 +1559,11 @@ function Show-Credits {
     Write-Centered -Text "---" -Y $y -Color 'DarkGray'
     $y += 2
     
-    Write-TypewriterCentered -Text "This tribute was created entirely in PowerShell" -Y $y -Color 'DarkGray' -Delay 25 -WithSound
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'CreditsOne') -Y $y -Color 'DarkGray' -Delay 25 -WithSound
     $y += 2
-    Write-TypewriterCentered -Text "Because there's no better way to say thank you" -Y $y -Color 'DarkGray' -Delay 25
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'CreditsTwo') -Y $y -Color 'DarkGray' -Delay 25
     $y += 2
-    Write-TypewriterCentered -Text "than with the very tool you created." -Y $y -Color 'Cyan' -Delay 25
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'CreditsThree') -Y $y -Color 'Cyan' -Delay 25
     Play-Sparkle
     
     $y += 4
@@ -1287,12 +1599,13 @@ function Start-Tribute {
             if (-not $script:Config.SkipToEnd) { Show-Timeline }
             if (-not $script:Config.SkipToEnd) { Show-Impact }
             if (-not $script:Config.SkipToEnd) { Show-Quotes }
+            if (-not $script:Config.SkipToEnd) { Show-CommunityWall }
 
             Show-Finale
             Show-Credits
 
             $y = $script:Config.ConsoleHeight - 2
-            Write-Centered -Text "Press any key to exit, or R to replay..." -Y $y -Color 'DarkGray'
+            Write-Centered -Text (Get-LocalizedString -Key 'PressAnyKey') -Y $y -Color 'DarkGray'
             if ($script:Config.ReplayRequested) {
                 $replay = $true
             } elseif ($script:Config.IsInteractive) {
