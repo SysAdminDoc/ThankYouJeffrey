@@ -26,7 +26,8 @@ param(
     [ValidateSet('Auto', 'en', 'ja', 'de', 'pt-br')]
     [string]$Locale = 'Auto',
     [switch]$Online,
-    [string]$CommunityUri = 'https://raw.githubusercontent.com/SysAdminDoc/ThankYouJeffrey/main/data/tributes.json'
+    [string]$CommunityUri = 'https://raw.githubusercontent.com/SysAdminDoc/ThankYouJeffrey/main/data/tributes.json',
+    [string]$TranscriptPath
 )
 
 #Requires -Version 5.1
@@ -56,6 +57,8 @@ $script:Config = [ordered]@{
     Locale          = $Locale
     Online          = $Online.IsPresent
     CommunityUri    = $CommunityUri
+    TranscriptPath  = $TranscriptPath
+    TranscriptStarted = $false
 }
 
 switch ($Speed) {
@@ -123,6 +126,14 @@ function Test-InteractiveConsole {
 function Get-ColorMode {
     if ($env:NO_COLOR) {
         return 'Plain'
+    }
+
+    try {
+        if ([Console]::IsOutputRedirected) {
+            return 'Plain'
+        }
+    } catch {
+        # Continue with environment-based detection for non-console hosts.
     }
 
     $colorTerm = [string]$env:COLORTERM
@@ -507,6 +518,170 @@ function Get-CommunityTributes {
     }
 
     return ConvertTo-SafeTributes -Value $script:Content.Tributes
+}
+
+function Get-MonadManifesto {
+    [CmdletBinding()]
+    param(
+        [ValidateRange(1, 99)]
+        [int]$Page = 1,
+        [switch]$All,
+        [switch]$AsText
+    )
+
+    $manifesto = Read-JsonBundle -FileName 'manifesto.json' -Fallback ([pscustomobject]@{
+            source = 'https://www.jsnover.com/Docs/MonadManifesto.pdf'
+            pages = @(
+                [pscustomobject]@{ page = 1; heading = 'The problem'; text = 'System administration was becoming a software problem, but the available tools still treated machines as text to parse.' }
+                [pscustomobject]@{ page = 2; heading = 'The idea'; text = 'Monad imagined a task-based shell whose commands compose through objects and a pipeline, making automation easier to reason about.' }
+                [pscustomobject]@{ page = 3; heading = 'The legacy'; text = 'That vision became PowerShell: a language, a shell, and a community built around making administrators more effective.' }
+            )
+        })
+
+    $pages = @($manifesto.pages)
+    if (-not $All) {
+        $pages = @($pages | Where-Object { [int]$_.page -eq $Page })
+    }
+
+    $result = @($pages | ForEach-Object {
+        [pscustomobject]@{
+            Page = [int]$_.page
+            Heading = [string]$_.heading
+            Text = [string]$_.text
+            Source = [string]$manifesto.source
+        }
+    })
+
+    if ($AsText) {
+        foreach ($entry in $result) {
+            "[$($entry.Page)] $($entry.Heading)"
+            $entry.Text
+            "Source: $($entry.Source)"
+            ''
+        }
+        return
+    }
+
+    return $result
+}
+
+function Get-Snoverism {
+    [CmdletBinding()]
+    param(
+        [ValidateRange(0, 999)]
+        [int]$Index = -1
+    )
+
+    $quotes = @(Get-Snoverisms)
+    if ($quotes.Count -eq 0) {
+        return
+    }
+
+    if ($Index -lt 0) {
+        $Index = Get-Random -Minimum 0 -Maximum $quotes.Count
+    } else {
+        $Index = $Index % $quotes.Count
+    }
+
+    return $quotes[$Index]
+}
+
+function Invoke-PowerShellTimeline {
+    [CmdletBinding()]
+    param([switch]$AsText)
+
+    $timeline = Get-Timeline | Select-Object Year, Event, Source
+    if ($AsText) {
+        foreach ($entry in $timeline) {
+            "[$($entry.Year)] $($entry.Event)"
+        }
+        return
+    }
+
+    return $timeline
+}
+
+function New-QuoteOfTheDay {
+    [CmdletBinding()]
+    param(
+        [datetime]$Date = (Get-Date),
+        [ValidateRange(0, 999)]
+        [int]$Index = -1
+    )
+
+    $quote = Get-Snoverism -Index $Index
+    if ($null -eq $quote) {
+        return
+    }
+
+    $dateText = $Date.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    @(
+        "## PowerShell quote of the day — $dateText"
+        ''
+        "> $($quote.Text)"
+        ''
+        "— $($quote.Attr.TrimStart('-').Trim())"
+        ''
+        "Source: $($quote.Source)"
+    ) -join "`n"
+}
+
+function Send-ThankYouEmail {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$To = '',
+        [string]$Subject = 'Thank you, Jeffrey Snover',
+        [string]$Message = 'Thank you for creating PowerShell and for showing us a better way to automate.',
+        [switch]$Open
+    )
+
+    $mailTo = "mailto:$($To)?subject=$([uri]::EscapeDataString($Subject))&body=$([uri]::EscapeDataString($Message))"
+    $draft = [pscustomobject]@{
+        To = $To
+        Subject = $Subject
+        Message = $Message
+        MailTo = $mailTo
+        Opened = $false
+    }
+
+    if ($Open -and $PSCmdlet.ShouldProcess($mailTo, 'Open an email draft')) {
+        try {
+            Start-Process -FilePath $mailTo -ErrorAction Stop
+            $draft.Opened = $true
+        } catch {
+            Write-Error "Unable to open the default mail client: $($_.Exception.Message)"
+        }
+    }
+
+    return $draft
+}
+
+function Get-ThankJeffreyShareUrl {
+    [CmdletBinding()]
+    param(
+        [string]$Message = 'Thank you, Jeffrey Snover, for creating PowerShell and changing how we automate.'
+    )
+
+    return "https://twitter.com/intent/tweet?text=$([uri]::EscapeDataString($Message))&url=$([uri]::EscapeDataString('https://github.com/SysAdminDoc/ThankYouJeffrey'))"
+}
+
+function Invoke-ThankJeffrey {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([switch]$Open)
+
+    $shareUrl = Get-ThankJeffreyShareUrl
+    if ($Open -and $PSCmdlet.ShouldProcess($shareUrl, 'Open a thank-you post draft')) {
+        try {
+            Start-Process -FilePath $shareUrl -ErrorAction Stop
+        } catch {
+            Write-Error "Unable to open the default browser: $($_.Exception.Message)"
+        }
+    }
+
+    return [pscustomobject]@{
+        Url = $shareUrl
+        Opened = $Open.IsPresent
+    }
 }
 
 # ============================================================================
@@ -1539,7 +1714,7 @@ function Show-Finale {
     $finalY += 4
     Write-Centered -Text "PS C:\> Write-Host 'Goodbye, and thank you!' -ForegroundColor Cyan" -Y $finalY -Color 'Gray'
     $finalY += 1
-    Write-Centered -Text "Goodbye, and thank you!" -Y $finalY -Color 'Cyan'
+    Write-Centered -Text (Get-LocalizedString -Key 'Goodbye') -Y $finalY -Color 'Cyan'
     
     # Closing fanfare
     Play-ClosingFanfare
@@ -1577,12 +1752,75 @@ function Show-Credits {
     Wait-Animation -Milliseconds 3000
 }
 
+function Show-ManifestoQr {
+    $qrPath = Join-Path $script:DataRoot 'monad-manifesto-qr.txt'
+    if (-not (Test-Path -LiteralPath $qrPath -PathType Leaf)) {
+        return
+    }
+
+    Clear-Console
+    Write-Centered -Text 'MONAD MANIFESTO' -Y 1 -Color 'Yellow'
+    $y = 3
+    foreach ($line in (Get-Content -LiteralPath $qrPath -Encoding ASCII)) {
+        if ($y -ge $script:Config.ConsoleHeight - 4) {
+            break
+        }
+        Write-Centered -Text $line -Y $y -Color 'White'
+        $y++
+    }
+
+    $manifesto = Get-MonadManifesto -All | Select-Object -First 1
+    if ($null -ne $manifesto) {
+        Write-Centered -Text $manifesto.Source -Y ($script:Config.ConsoleHeight - 2) -Color 'Cyan'
+    }
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
+}
+
+function Show-EasterEgg {
+    Clear-Console
+    $centerY = [Math]::Floor($script:Config.ConsoleHeight / 2)
+    Write-Centered -Text (Get-LocalizedString -Key 'EasterEggTitle') -Y ($centerY - 2) -Color 'Yellow'
+    Write-TypewriterCentered -Text (Get-LocalizedString -Key 'EasterEggLine') -Y $centerY -Color 'Cyan' -Delay 25
+    Write-Centered -Text 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' -Y ($centerY + 3) -Color 'DarkGray'
+    Wait-Animation -Milliseconds 2000
+}
+
+function Start-SnoverDemo {
+    [CmdletBinding()]
+    param()
+
+    try {
+        Initialize-Console
+        Show-TheProblem
+        Show-TheManifesto
+        Show-Timeline
+    } finally {
+        Restore-Console
+    }
+}
+
+function Start-StartDemo {
+    [CmdletBinding()]
+    param()
+
+    Start-SnoverDemo
+}
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
 function Start-Tribute {
     try {
+        if (-not [string]::IsNullOrWhiteSpace($script:Config.TranscriptPath)) {
+            try {
+                Start-Transcript -Path $script:Config.TranscriptPath -Force | Out-Null
+                $script:Config.TranscriptStarted = $true
+            } catch {
+                Write-Warning "Unable to start transcript: $($_.Exception.Message)"
+            }
+        }
+
         Initialize-Console
 
         do {
@@ -1600,9 +1838,11 @@ function Start-Tribute {
             if (-not $script:Config.SkipToEnd) { Show-Impact }
             if (-not $script:Config.SkipToEnd) { Show-Quotes }
             if (-not $script:Config.SkipToEnd) { Show-CommunityWall }
+            if (-not $script:Config.SkipToEnd -and $script:Config.EasterEgg) { Show-EasterEgg }
 
             Show-Finale
             Show-Credits
+            Show-ManifestoQr
 
             $y = $script:Config.ConsoleHeight - 2
             Write-Centered -Text (Get-LocalizedString -Key 'PressAnyKey') -Y $y -Color 'DarkGray'
@@ -1622,6 +1862,14 @@ function Start-Tribute {
         } while ($replay)
     }
     finally {
+        if ($script:Config.TranscriptStarted) {
+            try {
+                Stop-Transcript | Out-Null
+            } catch {
+                # Transcript cleanup is best effort.
+            }
+            $script:Config.TranscriptStarted = $false
+        }
         Restore-Console
     }
 }

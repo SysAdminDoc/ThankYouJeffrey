@@ -1,0 +1,20 @@
+name: Publish to PowerShell Gallery
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    if: startsWith(github.event.release.tag_name, 'v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish script
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: ./packaging/Publish-PSGallery.ps1 -ApiKey $env:PSGALLERY_API_KEY

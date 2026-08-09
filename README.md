@@ -37,6 +37,18 @@ When running from a checkout, the timeline, Snoverisms, community tributes, and
 translations are stored in the `data/` JSON bundles. The one-line invocation
 uses embedded fallbacks when those files are not present.
 
+Dot-source the script when using its helper commands:
+
+```powershell
+. .\ThankYouJeffrey.ps1
+Get-MonadManifesto -All
+Get-Snoverism
+New-QuoteOfTheDay
+Send-ThankYouEmail -To you@example.com
+```
+
+Use `-TranscriptPath .\tribute.log` to capture a run for sharing.
+
 ## About
 
 This is a cinematic console experience celebrating **Jeffrey Snover's** retirement - the visionary who created PowerShell and fundamentally changed how we manage systems.

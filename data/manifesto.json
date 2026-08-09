@@ -1,0 +1,20 @@
+{
+  "source": "https://www.jsnover.com/Docs/MonadManifesto.pdf",
+  "pages": [
+    {
+      "page": 1,
+      "heading": "The problem",
+      "text": "System administration was becoming a software problem, but the available tools still treated machines as text to parse."
+    },
+    {
+      "page": 2,
+      "heading": "The idea",
+      "text": "Monad imagined a task-based shell whose commands compose through objects and a pipeline, making automation easier to reason about."
+    },
+    {
+      "page": 3,
+      "heading": "The legacy",
+      "text": "That vision became PowerShell: a language, a shell, and a community built around making administrators more effective."
+    }
+  ]
+}

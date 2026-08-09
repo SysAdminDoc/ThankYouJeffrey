@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>ThankYouJeffrey</id>
+    <version>0.1.0</version>
+    <title>Thank You Jeffrey</title>
+    <authors>SysAdminDoc</authors>
+    <owners>SysAdminDoc</owners>
+    <projectUrl>https://github.com/SysAdminDoc/ThankYouJeffrey</projectUrl>
+    <projectSourceUrl>https://github.com/SysAdminDoc/ThankYouJeffrey</projectSourceUrl>
+    <packageSourceUrl>https://github.com/SysAdminDoc/ThankYouJeffrey</packageSourceUrl>
+    <licenseUrl>https://github.com/SysAdminDoc/ThankYouJeffrey/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>A cinematic PowerShell tribute to Jeffrey Snover.</description>
+    <summary>Thank You Jeffrey PowerShell tribute</summary>
+    <tags>powershell tribute jeffrey snover console</tags>
+  </metadata>
+  <files>
+    <file src="..\..\ThankYouJeffrey.ps1" target="tools" />
+    <file src="..\..\data\**" target="tools\data" />
+    <file src="tools\chocolateyInstall.ps1" target="tools" />
+  </files>
+</package>
