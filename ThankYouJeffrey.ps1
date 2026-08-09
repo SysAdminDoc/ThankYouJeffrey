@@ -16,18 +16,190 @@
     Thank you, Jeffrey. For everything.
 #>
 
+param(
+    [ValidateSet('Fast', 'Normal', 'Dramatic')]
+    [string]$Speed = 'Normal',
+    [switch]$Audio,
+    [switch]$SkipIntro,
+    [switch]$EasterEgg,
+    [switch]$NoWait
+)
+
 #Requires -Version 5.1
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
-$script:Config = @{
+$script:Config = [ordered]@{
     FrameDelay      = 50        # Base animation frame delay (ms)
     TypewriterDelay = 30        # Typewriter effect delay (ms)
     SceneDelay      = 2000      # Pause between scenes (ms)
-    EnableSound     = $true     # Console beeps and music
-    SkipIntro       = $false    # Skip the opening sequence
+    EnableSound     = $Audio.IsPresent
+    SkipIntro       = $SkipIntro.IsPresent
+    Speed           = $Speed
+    SpeedFactor     = 1.0
+    PacingFactor    = 1.0
+    FrameRate       = 20
+    ConsoleWidth    = 120
+    ConsoleHeight   = 40
+    ColorMode       = 'Console'
+    IsInteractive   = $false
+    SkipToEnd       = $false
+    ReplayRequested = $false
+    SuppressDelays  = $NoWait.IsPresent
+    EasterEgg       = $EasterEgg.IsPresent
+}
+
+switch ($Speed) {
+    'Fast' { $script:Config.SpeedFactor = 0.35 }
+    'Dramatic' { $script:Config.SpeedFactor = 1.75 }
+    default { $script:Config.SpeedFactor = 1.0 }
+}
+
+function Get-ConsoleWidth {
+    try {
+        if ($null -ne $Host.UI.RawUI) {
+            return [Math]::Max(40, [int]$Host.UI.RawUI.WindowSize.Width)
+        }
+    } catch {
+        # Fall back to the process console when a host does not expose RawUI.
+    }
+
+    try {
+        if ([Console]::WindowWidth -gt 0) {
+            return [Math]::Max(40, [int][Console]::WindowWidth)
+        }
+    } catch {
+        # A redirected or non-console host has no usable window width.
+    }
+
+    return 120
+}
+
+function Get-ConsoleHeight {
+    try {
+        if ($null -ne $Host.UI.RawUI) {
+            return [Math]::Max(20, [int]$Host.UI.RawUI.WindowSize.Height)
+        }
+    } catch {
+        # Fall back to a safe theatrical default.
+    }
+
+    try {
+        if ([Console]::WindowHeight -gt 0) {
+            return [Math]::Max(20, [int][Console]::WindowHeight)
+        }
+    } catch {
+        # A redirected or non-console host has no usable window height.
+    }
+
+    return 40
+}
+
+function Test-InteractiveConsole {
+    try {
+        if ($null -eq $Host.UI.RawUI) {
+            return $false
+        }
+
+        if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
+            return $false
+        }
+
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Get-ColorMode {
+    if ($env:NO_COLOR) {
+        return 'Plain'
+    }
+
+    $colorTerm = [string]$env:COLORTERM
+    $term = [string]$env:TERM
+    $termProgram = [string]$env:TERM_PROGRAM
+
+    if ($env:WT_SESSION -or $colorTerm -match 'truecolor|24bit' -or $termProgram -eq 'Alacritty') {
+        return 'TrueColor'
+    }
+
+    if ($colorTerm -match '256color' -or $term -match '256color' -or $env:ANSICON -or $env:ConEmuANSI -eq 'ON') {
+        return 'Ansi256'
+    }
+
+    return 'Console'
+}
+
+function Initialize-Pacing {
+    $script:Config.ConsoleWidth = Get-ConsoleWidth
+    $script:Config.ConsoleHeight = Get-ConsoleHeight
+    $script:Config.IsInteractive = Test-InteractiveConsole
+    $script:Config.ColorMode = Get-ColorMode
+
+    $script:Config.FrameRate = if ($script:Config.ColorMode -in @('TrueColor', 'Ansi256')) { 30 } else { 20 }
+    if ($script:Config.ConsoleWidth -lt 80) {
+        $script:Config.PacingFactor = 1.35
+    } elseif ($script:Config.ConsoleWidth -lt 120) {
+        $script:Config.PacingFactor = 1.15
+    } else {
+        $script:Config.PacingFactor = 1.0
+    }
+}
+
+function Get-AdjustedDelay {
+    param([double]$Milliseconds)
+
+    if ($script:Config.SuppressDelays -or -not $script:Config.IsInteractive) {
+        return 0
+    }
+
+    $delay = $Milliseconds * $script:Config.SpeedFactor * $script:Config.PacingFactor
+    $frameBudget = 1000 / [Math]::Max(10, [double]$script:Config.FrameRate)
+    return [Math]::Max(1, [int][Math]::Min($delay, $frameBudget * 4))
+}
+
+function Read-PlaybackControl {
+    if (-not $script:Config.IsInteractive -or $script:Config.SkipToEnd) {
+        return
+    }
+
+    try {
+        while ($Host.UI.RawUI.KeyAvailable) {
+            $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+            if ($key.Character -eq ' ' -or $key.VirtualKeyCode -eq 32) {
+                $script:Config.SkipToEnd = $true
+            } elseif ($key.Character -eq 'r' -or $key.Character -eq 'R') {
+                $script:Config.ReplayRequested = $true
+                $script:Config.SkipToEnd = $true
+            }
+        }
+    } catch {
+        # Some hosts expose RawUI but do not support non-blocking key reads.
+    }
+}
+
+function Wait-Animation {
+    param([int]$Milliseconds)
+
+    if ($Milliseconds -le 0) {
+        Read-PlaybackControl
+        return
+    }
+
+    $remaining = Get-AdjustedDelay -Milliseconds $Milliseconds
+    while ($remaining -gt 0 -and -not $script:Config.SkipToEnd) {
+        Read-PlaybackControl
+        if ($script:Config.SkipToEnd) {
+            return
+        }
+
+        $slice = [Math]::Min(50, $remaining)
+        Start-Sleep -Milliseconds $slice
+        $remaining -= $slice
+    }
 }
 
 # ============================================================================
@@ -63,7 +235,7 @@ function Play-Note {
         if ($freq -and $freq -gt 0) {
             [Console]::Beep($freq, $Duration)
         } elseif ($Note -eq 'R') {
-            Start-Sleep -Milliseconds $Duration
+            Wait-Animation -Milliseconds $Duration
         }
     } catch {
         # Silently fail if beep not supported
@@ -191,7 +363,7 @@ function Play-Heartbeat {
     
     try {
         [Console]::Beep(100, 100)
-        Start-Sleep -Milliseconds 100
+        Wait-Animation -Milliseconds 100
         [Console]::Beep(100, 150)
     } catch {}
 }
@@ -294,39 +466,134 @@ $script:Colors = @{
     Gold           = 'Yellow'
 }
 
+$script:AnsiColors = @{
+    Black     = @(0, 0, 0)
+    DarkGray  = @(85, 85, 85)
+    Gray      = @(192, 192, 192)
+    White     = @(255, 255, 255)
+    Red       = @(205, 49, 49)
+    DarkRed   = @(139, 0, 0)
+    Green     = @(13, 188, 121)
+    DarkGreen = @(0, 100, 0)
+    Yellow    = @(229, 229, 16)
+    DarkYellow = @(128, 128, 0)
+    Blue      = @(36, 114, 200)
+    DarkBlue  = @(0, 0, 139)
+    Magenta   = @(188, 63, 188)
+    DarkMagenta = @(139, 0, 139)
+    Cyan      = @(17, 168, 205)
+    DarkCyan  = @(0, 139, 139)
+}
+
+function ConvertTo-Ansi256Code {
+    param([int[]]$Rgb)
+
+    $levels = @(0, 95, 135, 175, 215, 255)
+    $indexes = foreach ($channel in $Rgb) {
+        $nearest = 0
+        $distance = [int]::MaxValue
+        for ($i = 0; $i -lt $levels.Count; $i++) {
+            $candidateDistance = [Math]::Abs($channel - $levels[$i])
+            if ($candidateDistance -lt $distance) {
+                $distance = $candidateDistance
+                $nearest = $i
+            }
+        }
+        $nearest
+    }
+
+    return 16 + (36 * $indexes[0]) + (6 * $indexes[1]) + $indexes[2]
+}
+
+function Write-ConsoleText {
+    param(
+        [AllowNull()]
+        [string]$Text,
+        [ConsoleColor]$Color = 'White',
+        [switch]$NoNewline
+    )
+
+    if ($script:Config.ColorMode -eq 'TrueColor' -or $script:Config.ColorMode -eq 'Ansi256') {
+        $rgb = $script:AnsiColors[[string]$Color]
+        if ($null -eq $rgb) {
+            $rgb = $script:AnsiColors.White
+        }
+
+        if ($script:Config.ColorMode -eq 'TrueColor') {
+            $prefix = "`e[38;2;$($rgb[0]);$($rgb[1]);$($rgb[2])m"
+        } else {
+            $prefix = "`e[38;5;$(ConvertTo-Ansi256Code -Rgb $rgb)m"
+        }
+
+        $suffix = "`e[0m"
+        if ($NoNewline) {
+            [Console]::Write($prefix + $Text + $suffix)
+        } else {
+            [Console]::WriteLine($prefix + $Text + $suffix)
+        }
+        return
+    }
+
+    Write-Host $Text -ForegroundColor $Color -NoNewline:$NoNewline
+}
+
 # ============================================================================
 # CONSOLE SETUP
 # ============================================================================
 
 function Initialize-Console {
-    # Store original settings
-    $script:OriginalBg = $Host.UI.RawUI.BackgroundColor
-    $script:OriginalFg = $Host.UI.RawUI.ForegroundColor
-    $script:OriginalCursor = [Console]::CursorVisible
-    
-    # Configure for animation
-    [Console]::CursorVisible = $false
-    $Host.UI.RawUI.BackgroundColor = 'Black'
-    $Host.UI.RawUI.ForegroundColor = 'White'
-    
-    # Set window size if possible
-    try {
-        $maxWidth = [Math]::Min(120, $Host.UI.RawUI.MaxWindowSize.Width)
-        $maxHeight = [Math]::Min(40, $Host.UI.RawUI.MaxWindowSize.Height)
-        $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size($maxWidth, $maxHeight)
-        $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size($maxWidth, 1000)
-    } catch {
-        # Continue with current size
+    Initialize-Pacing
+    $script:OriginalBg = $null
+    $script:OriginalFg = $null
+    $script:OriginalCursor = $true
+
+    if (-not $script:Config.IsInteractive) {
+        return
     }
-    
-    Clear-Host
+
+    try {
+        $script:OriginalBg = $Host.UI.RawUI.BackgroundColor
+        $script:OriginalFg = $Host.UI.RawUI.ForegroundColor
+        $script:OriginalCursor = [Console]::CursorVisible
+        [Console]::CursorVisible = $false
+        $Host.UI.RawUI.BackgroundColor = 'Black'
+        $Host.UI.RawUI.ForegroundColor = 'White'
+    } catch {
+        # Continue with the host's current console settings.
+    }
+
+    Clear-Console
 }
 
 function Restore-Console {
-    [Console]::CursorVisible = $script:OriginalCursor
-    $Host.UI.RawUI.BackgroundColor = $script:OriginalBg
-    $Host.UI.RawUI.ForegroundColor = $script:OriginalFg
-    Clear-Host
+    if (-not $script:Config.IsInteractive) {
+        return
+    }
+
+    try {
+        [Console]::CursorVisible = $script:OriginalCursor
+        if ($null -ne $script:OriginalBg) {
+            $Host.UI.RawUI.BackgroundColor = $script:OriginalBg
+        }
+        if ($null -ne $script:OriginalFg) {
+            $Host.UI.RawUI.ForegroundColor = $script:OriginalFg
+        }
+        Clear-Console
+    } catch {
+        # Restoration is best effort across console hosts.
+    }
+}
+
+function Clear-Console {
+    if (-not $script:Config.IsInteractive) {
+        return
+    }
+
+    try {
+        Clear-Host
+    } catch {
+        # A redirected host may reject clear-screen operations.
+    }
 }
 
 # ============================================================================
@@ -335,7 +602,15 @@ function Restore-Console {
 
 function Set-CursorPosition {
     param([int]$X, [int]$Y)
-    $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates($X, $Y)
+    if (-not $script:Config.IsInteractive) {
+        return
+    }
+
+    try {
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates($X, $Y)
+    } catch {
+        # Redirected output cannot position a cursor.
+    }
 }
 
 function Write-Centered {
@@ -344,10 +619,10 @@ function Write-Centered {
         [int]$Y,
         [ConsoleColor]$Color = 'White'
     )
-    $width = $Host.UI.RawUI.WindowSize.Width
+    $width = $script:Config.ConsoleWidth
     $x = [Math]::Max(0, [Math]::Floor(($width - $Text.Length) / 2))
     Set-CursorPosition -X $x -Y $Y
-    Write-Host $Text -ForegroundColor $Color -NoNewline
+    Write-ConsoleText -Text $Text -Color $Color -NoNewline
 }
 
 function Write-Typewriter {
@@ -361,11 +636,14 @@ function Write-Typewriter {
     )
     Set-CursorPosition -X $X -Y $Y
     foreach ($char in $Text.ToCharArray()) {
-        Write-Host $char -ForegroundColor $Color -NoNewline
+        Write-ConsoleText -Text $char -Color $Color -NoNewline
         if ($WithSound -and $char -match '\S') {
             Play-TypewriterClick
         }
-        Start-Sleep -Milliseconds $Delay
+        Wait-Animation -Milliseconds $Delay
+        if ($script:Config.SkipToEnd) {
+            break
+        }
     }
 }
 
@@ -377,7 +655,7 @@ function Write-TypewriterCentered {
         [int]$Delay = $script:Config.TypewriterDelay,
         [switch]$WithSound
     )
-    $width = $Host.UI.RawUI.WindowSize.Width
+    $width = $script:Config.ConsoleWidth
     $x = [Math]::Max(0, [Math]::Floor(($width - $Text.Length) / 2))
     Write-Typewriter -Text $Text -X $x -Y $Y -Color $Color -Delay $Delay -WithSound:$WithSound
 }
@@ -397,15 +675,15 @@ function Write-FadeIn {
             Write-Centered -Text $line -Y $y -Color $fadeColor
             $y++
         }
-        Start-Sleep -Milliseconds 150
+        Wait-Animation -Milliseconds 150
     }
 }
 
 function Clear-Line {
     param([int]$Y)
-    $width = $Host.UI.RawUI.WindowSize.Width
+    $width = $script:Config.ConsoleWidth
     Set-CursorPosition -X 0 -Y $Y
-    Write-Host (' ' * $width) -NoNewline
+    Write-ConsoleText -Text (' ' * $width) -NoNewline
 }
 
 function Show-ProgressBar {
@@ -417,7 +695,7 @@ function Show-ProgressBar {
     )
     
     $width = 40
-    $x = [Math]::Floor(($Host.UI.RawUI.WindowSize.Width - $width - 2) / 2)
+    $x = [Math]::Floor(($script:Config.ConsoleWidth - $width - 2) / 2)
     $steps = 20
     $stepDelay = $Duration / $steps
     
@@ -428,8 +706,8 @@ function Show-ProgressBar {
         $empty = $width - $filled
         $bar = "[" + ("=" * $filled) + (" " * $empty) + "]"
         Set-CursorPosition -X $x -Y $Y
-        Write-Host $bar -ForegroundColor $Color -NoNewline
-        Start-Sleep -Milliseconds $stepDelay
+        Write-ConsoleText -Text $bar -Color $Color -NoNewline
+        Wait-Animation -Milliseconds $stepDelay
     }
 }
 
@@ -512,30 +790,30 @@ PS C:\> _
 # ============================================================================
 
 function Show-Opening {
-    Clear-Host
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $height = $script:Config.ConsoleHeight
     $centerY = [Math]::Floor($height / 2) - 3
     
     # Opening fanfare
     Play-Fanfare
     
     # Fade in "A PowerShell Production"
-    Start-Sleep -Milliseconds 500
+    Wait-Animation -Milliseconds 500
     Write-TypewriterCentered -Text "A PowerShell Production" -Y $centerY -Color 'DarkGray' -Delay 50 -WithSound
     Play-TypewriterReturn
-    Start-Sleep -Milliseconds 1500
+    Wait-Animation -Milliseconds 1500
     
     Play-TransitionDown
-    Clear-Host
-    Start-Sleep -Milliseconds 300
+    Clear-Console
+    Wait-Animation -Milliseconds 300
     
     # Fade in "Presents"
     Write-TypewriterCentered -Text "presents" -Y $centerY -Color 'DarkGray' -Delay 80 -WithSound
     Play-Sparkle
-    Start-Sleep -Milliseconds 1500
+    Wait-Animation -Milliseconds 1500
     
     Play-Whoosh
-    Clear-Host
+    Clear-Console
 }
 
 # ============================================================================
@@ -543,31 +821,31 @@ function Show-Opening {
 # ============================================================================
 
 function Show-Title {
-    Clear-Host
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $height = $script:Config.ConsoleHeight
     $lines = $script:Art.ThankYou -split "`n"
     $startY = [Math]::Floor($height / 2) - [Math]::Floor($lines.Count / 2) - 2
     
-    Start-Sleep -Milliseconds 500
+    Wait-Animation -Milliseconds 500
     
     # Draw title with fade effect
     Write-FadeIn -Lines $lines -StartY $startY -Color 'Yellow'
     Play-PowerShellTheme
     
-    Start-Sleep -Milliseconds 500
+    Wait-Animation -Milliseconds 500
     
     # Subtitle
     $subtitleY = $startY + $lines.Count + 2
     Write-TypewriterCentered -Text "Jeffrey Snover" -Y $subtitleY -Color 'Cyan' -Delay 60 -WithSound
     Play-Sparkle
     
-    Start-Sleep -Milliseconds 300
+    Wait-Animation -Milliseconds 300
     Write-TypewriterCentered -Text "Creator of PowerShell" -Y ($subtitleY + 2) -Color 'White' -Delay 40
     
-    Start-Sleep -Milliseconds 300
+    Wait-Animation -Milliseconds 300
     Write-TypewriterCentered -Text "[ A Retirement Tribute ]" -Y ($subtitleY + 4) -Color 'DarkGray' -Delay 30
     
-    Start-Sleep -Milliseconds $script:Config.SceneDelay
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
 
 # ============================================================================
@@ -575,8 +853,8 @@ function Show-Title {
 # ============================================================================
 
 function Show-TheProblem {
-    Clear-Host
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $height = $script:Config.ConsoleHeight
     $y = 3
     
     # Year header
@@ -600,7 +878,7 @@ function Show-TheProblem {
     foreach ($line in $cmdLines) {
         Write-Centered -Text $line -Y $y -Color 'Gray'
         Play-Heartbeat
-        Start-Sleep -Milliseconds 200
+        Wait-Animation -Milliseconds 200
         $y += 1
     }
     
@@ -616,7 +894,7 @@ function Show-TheProblem {
     Play-TransitionUp
     Write-TypewriterCentered -Text "One built for the future." -Y $y -Color 'Cyan' -Delay 40
     
-    Start-Sleep -Milliseconds $script:Config.SceneDelay
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
 
 # ============================================================================
@@ -624,8 +902,8 @@ function Show-TheProblem {
 # ============================================================================
 
 function Show-TheManifesto {
-    Clear-Host
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $height = $script:Config.ConsoleHeight
     $y = 3
     
     Play-Whoosh
@@ -656,10 +934,10 @@ function Show-TheManifesto {
         Write-TypewriterCentered -Text $quote -Y $y -Color 'White' -Delay 25
         Play-TimelineTick
         $y += 2
-        Start-Sleep -Milliseconds 300
+        Wait-Animation -Milliseconds 300
     }
     
-    Start-Sleep -Milliseconds $script:Config.SceneDelay
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
 
 # ============================================================================
@@ -667,7 +945,7 @@ function Show-TheManifesto {
 # ============================================================================
 
 function Show-Timeline {
-    Clear-Host
+    Clear-Console
     $y = 2
     
     Play-TransitionUp
@@ -689,7 +967,7 @@ function Show-Timeline {
     
     foreach ($item in $timeline) {
         $yearText = "[ $($item.Year) ]"
-        $width = $Host.UI.RawUI.WindowSize.Width
+        $width = $script:Config.ConsoleWidth
         $lineX = [Math]::Floor($width / 2) - 30
         
         # Sound for each milestone
@@ -697,13 +975,16 @@ function Show-Timeline {
         
         # Draw timeline marker
         Set-CursorPosition -X $lineX -Y $y
-        Write-Host $yearText -ForegroundColor 'Magenta' -NoNewline
+        Write-ConsoleText -Text $yearText -Color 'Magenta' -NoNewline
         
         # Draw event with typewriter
         Set-CursorPosition -X ($lineX + 12) -Y $y
         foreach ($char in $item.Event.ToCharArray()) {
-            Write-Host $char -ForegroundColor $item.Color -NoNewline
-            Start-Sleep -Milliseconds 15
+            Write-ConsoleText -Text $char -Color $item.Color -NoNewline
+            Wait-Animation -Milliseconds 15
+            if ($script:Config.SkipToEnd) {
+                break
+            }
         }
         
         # Special sounds for major events
@@ -718,14 +999,14 @@ function Show-Timeline {
         if ($item -ne $timeline[-1]) {
             $y++
             Set-CursorPosition -X ($lineX + 4) -Y $y
-            Write-Host "|" -ForegroundColor 'DarkGray'
+            Write-ConsoleText -Text "|" -Color 'DarkGray'
         }
         
         $y++
-        Start-Sleep -Milliseconds 100
+        Wait-Animation -Milliseconds 100
     }
     
-    Start-Sleep -Milliseconds $script:Config.SceneDelay
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
 
 # ============================================================================
@@ -733,7 +1014,7 @@ function Show-Timeline {
 # ============================================================================
 
 function Show-Impact {
-    Clear-Host
+    Clear-Console
     $y = 3
     
     Play-Whoosh
@@ -757,14 +1038,14 @@ function Show-Impact {
         Play-TimelineTick
         Write-TypewriterCentered -Text ">> $stat" -Y $y -Color 'White' -Delay 25
         $y += 2
-        Start-Sleep -Milliseconds 200
+        Wait-Animation -Milliseconds 200
     }
     
     $y += 1
     Play-VictoryTheme
     Write-TypewriterCentered -Text "One shell to rule them all." -Y $y -Color 'Green' -Delay 50 -WithSound
     
-    Start-Sleep -Milliseconds $script:Config.SceneDelay
+    Wait-Animation -Milliseconds $script:Config.SceneDelay
 }
 
 # ============================================================================
@@ -772,8 +1053,8 @@ function Show-Impact {
 # ============================================================================
 
 function Show-Quotes {
-    Clear-Host
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $height = $script:Config.ConsoleHeight
     
     $quotes = @(
         @{
@@ -792,15 +1073,15 @@ function Show-Quotes {
     
     foreach ($quote in $quotes) {
         Play-TransitionUp
-        Clear-Host
+        Clear-Console
         $y = [Math]::Floor($height / 2) - 2
         
         Write-TypewriterCentered -Text ('"' + $quote.Text + '"') -Y $y -Color 'White' -Delay 35 -WithSound
         Play-Sparkle
-        Start-Sleep -Milliseconds 400
+        Wait-Animation -Milliseconds 400
         Write-TypewriterCentered -Text $quote.Attr -Y ($y + 3) -Color 'DarkGray' -Delay 40
         
-        Start-Sleep -Milliseconds 2000
+        Wait-Animation -Milliseconds 2000
     }
 }
 
@@ -810,9 +1091,13 @@ function Show-Quotes {
 
 function Show-Fireworks {
     param([int]$Duration = 5000)
+
+    if (-not $script:Config.IsInteractive -or $script:Config.SuppressDelays) {
+        $Duration = 0
+    }
     
-    $width = $Host.UI.RawUI.WindowSize.Width
-    $height = $Host.UI.RawUI.WindowSize.Height
+    $width = $script:Config.ConsoleWidth
+    $height = $script:Config.ConsoleHeight
     $endTime = (Get-Date).AddMilliseconds($Duration)
     
     $particles = @()
@@ -821,7 +1106,7 @@ function Show-Fireworks {
     
     $frameCount = 0
     
-    while ((Get-Date) -lt $endTime) {
+    while ((Get-Date) -lt $endTime -and -not $script:Config.SkipToEnd) {
         $frameCount++
         
         # Spawn new firework
@@ -856,7 +1141,7 @@ function Show-Fireworks {
             # Clear old position
             if ($p.X -ge 0 -and $p.X -lt $width -and $p.Y -ge 0 -and $p.Y -lt $height) {
                 Set-CursorPosition -X ([int]$p.X) -Y ([int]$p.Y)
-                Write-Host ' ' -NoNewline
+                Write-ConsoleText -Text ' ' -NoNewline
             }
             
             # Update position
@@ -868,13 +1153,13 @@ function Show-Fireworks {
             # Draw new position
             if ($p.Life -gt 0 -and $p.X -ge 0 -and $p.X -lt $width -and $p.Y -ge 0 -and $p.Y -lt $height) {
                 Set-CursorPosition -X ([int]$p.X) -Y ([int]$p.Y)
-                Write-Host $p.Char -ForegroundColor $p.Color -NoNewline
+                Write-ConsoleText -Text $p.Char -Color $p.Color -NoNewline
                 $newParticles += $p
             }
         }
         $particles = $newParticles
         
-        Start-Sleep -Milliseconds 50
+        Wait-Animation -Milliseconds 50
     }
 }
 
@@ -883,9 +1168,9 @@ function Show-Fireworks {
 # ============================================================================
 
 function Show-Finale {
-    Clear-Host
-    $width = $Host.UI.RawUI.WindowSize.Width
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $width = $script:Config.ConsoleWidth
+    $height = $script:Config.ConsoleHeight
     $centerY = [Math]::Floor($height / 2)
     
     # First, show the message
@@ -899,13 +1184,13 @@ function Show-Finale {
         $nameY++
     }
     
-    Start-Sleep -Milliseconds 1000
+    Wait-Animation -Milliseconds 1000
     
     # Fireworks!
     Show-Fireworks -Duration 5000
     
     # Final message with emotional theme
-    Clear-Host
+    Clear-Console
     
     Play-EmotionalTheme
     
@@ -926,7 +1211,7 @@ function Show-Finale {
         Play-TimelineTick
         Write-Centered -Text $msg -Y $finalY -Color 'White'
         $finalY++
-        Start-Sleep -Milliseconds 600
+        Wait-Animation -Milliseconds 600
     }
     
     $finalY += 2
@@ -947,7 +1232,7 @@ function Show-Finale {
     # Closing fanfare
     Play-ClosingFanfare
     
-    Start-Sleep -Milliseconds 3000
+    Wait-Animation -Milliseconds 3000
 }
 
 # ============================================================================
@@ -955,8 +1240,8 @@ function Show-Finale {
 # ============================================================================
 
 function Show-Credits {
-    Clear-Host
-    $height = $Host.UI.RawUI.WindowSize.Height
+    Clear-Console
+    $height = $script:Config.ConsoleHeight
     $y = [Math]::Floor($height / 2) - 4
     
     Write-Centered -Text "---" -Y $y -Color 'DarkGray'
@@ -977,7 +1262,7 @@ function Show-Credits {
     # Final musical flourish
     Play-PowerShellTheme
     
-    Start-Sleep -Milliseconds 3000
+    Wait-Animation -Milliseconds 3000
 }
 
 # ============================================================================
@@ -987,26 +1272,41 @@ function Show-Credits {
 function Start-Tribute {
     try {
         Initialize-Console
-        
-        # Opening
-        if (-not $script:Config.SkipIntro) {
-            Show-Opening
-        }
-        
-        # Main scenes
-        Show-Title
-        Show-TheProblem
-        Show-TheManifesto
-        Show-Timeline
-        Show-Impact
-        Show-Quotes
-        Show-Finale
-        Show-Credits
-        
-        # Wait for keypress
-        $y = $Host.UI.RawUI.WindowSize.Height - 2
-        Write-Centered -Text "Press any key to exit..." -Y $y -Color 'DarkGray'
-        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+
+        do {
+            $script:Config.SkipToEnd = $false
+            $script:Config.ReplayRequested = $false
+
+            if (-not $script:Config.SkipIntro) {
+                Show-Opening
+            }
+
+            if (-not $script:Config.SkipToEnd) { Show-Title }
+            if (-not $script:Config.SkipToEnd) { Show-TheProblem }
+            if (-not $script:Config.SkipToEnd) { Show-TheManifesto }
+            if (-not $script:Config.SkipToEnd) { Show-Timeline }
+            if (-not $script:Config.SkipToEnd) { Show-Impact }
+            if (-not $script:Config.SkipToEnd) { Show-Quotes }
+
+            Show-Finale
+            Show-Credits
+
+            $y = $script:Config.ConsoleHeight - 2
+            Write-Centered -Text "Press any key to exit, or R to replay..." -Y $y -Color 'DarkGray'
+            if ($script:Config.ReplayRequested) {
+                $replay = $true
+            } elseif ($script:Config.IsInteractive) {
+                $replay = $false
+                try {
+                    $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+                    $replay = $key.Character -eq 'r' -or $key.Character -eq 'R'
+                } catch {
+                    $replay = $false
+                }
+            } else {
+                $replay = $false
+            }
+        } while ($replay)
     }
     finally {
         Restore-Console
@@ -1017,4 +1317,6 @@ function Start-Tribute {
 # RUN
 # ============================================================================
 
-Start-Tribute
+if ($MyInvocation.InvocationName -ne '.') {
+    Start-Tribute
+}
