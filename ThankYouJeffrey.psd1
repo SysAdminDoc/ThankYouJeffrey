@@ -1,6 +1,6 @@
 @{
     RootModule = 'ThankYouJeffrey.psm1'
-    ModuleVersion = '0.1.0'
+    ModuleVersion = '0.2.0'
     GUID = '8c0e8b28-0fc8-4f4e-a7a4-5e6b9f9f5f2f'
     Author = 'SysAdminDoc'
     CompanyName = 'SysAdminDoc'
@@ -16,6 +16,7 @@
         'New-QuoteOfTheDay'
         'Send-ThankYouEmail'
         'Get-ThankJeffreyShareUrl'
+        'Get-ThankYouJeffreyAbout'
         'Invoke-ThankJeffrey'
         'Start-SnoverDemo'
         'Start-StartDemo'

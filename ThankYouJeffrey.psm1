@@ -9,6 +9,7 @@ Export-ModuleMember -Function @(
     'New-QuoteOfTheDay'
     'Send-ThankYouEmail'
     'Get-ThankJeffreyShareUrl'
+    'Get-ThankYouJeffreyAbout'
     'Invoke-ThankJeffrey'
     'Start-SnoverDemo'
     'Start-StartDemo'

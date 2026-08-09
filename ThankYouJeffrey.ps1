@@ -36,6 +36,8 @@ param(
 # CONFIGURATION
 # ============================================================================
 
+$script:Version = '0.2.0'
+
 $script:Config = [ordered]@{
     FrameDelay      = 50        # Base animation frame delay (ms)
     TypewriterDelay = 30        # Typewriter effect delay (ms)
@@ -156,6 +158,9 @@ function Initialize-Pacing {
     $script:Config.ConsoleHeight = Get-ConsoleHeight
     $script:Config.IsInteractive = Test-InteractiveConsole
     $script:Config.ColorMode = Get-ColorMode
+    if (-not $script:Config.IsInteractive) {
+        $script:Config.EnableSound = $false
+    }
 
     $script:Config.FrameRate = if ($script:Config.ColorMode -in @('TrueColor', 'Ansi256')) { 30 } else { 20 }
     if ($script:Config.ConsoleWidth -lt 80) {
@@ -663,6 +668,19 @@ function Get-ThankJeffreyShareUrl {
     )
 
     return "https://twitter.com/intent/tweet?text=$([uri]::EscapeDataString($Message))&url=$([uri]::EscapeDataString('https://github.com/SysAdminDoc/ThankYouJeffrey'))"
+}
+
+function Get-ThankYouJeffreyAbout {
+    [CmdletBinding()]
+    param()
+
+    return [pscustomobject]@{
+        Name = 'Thank You Jeffrey'
+        Version = $script:Version
+        Description = 'A cinematic PowerShell tribute to Jeffrey Snover.'
+        PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+        ProjectUri = 'https://github.com/SysAdminDoc/ThankYouJeffrey'
+    }
 }
 
 function Invoke-ThankJeffrey {
