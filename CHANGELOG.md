@@ -16,3 +16,26 @@ All notable changes to ThankYouJeffrey will be documented in this file.
 - Added: Add PowerShell one-liner section to README
 - Changed: Update README.md
 - Thank You Jeffrey Snover
+
+## Roadmap archive — 2026-08-10 — ROADMAP.md
+
+<details>
+<summary>Original roadmap snapshot</summary>
+
+```markdown
+# Roadmap
+
+Forward-looking plans for ThankYouJeffrey — a cinematic PowerShell console tribute to Jeffrey Snover. The project's scope is intentionally small; this roadmap is mostly polish and small celebratory additions.
+
+## Planned Features
+
+### Console Experience
+
+### Content
+
+### Distribution
+
+## Nice-to-Haves
+```
+
+</details>
